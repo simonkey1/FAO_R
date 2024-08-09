@@ -1,0 +1,218 @@
+---
+title: "Variación de Temperatura en el Mundo 1961-2019"
+author: "Cristóbal Gómez"
+format: 
+  html:
+    code-fold: true
+    code-overflow: scroll
+editor: visual
+---
+
+
+
+## Desafío Ayudantía 2024
+
+Presento mi resolución del desafío propuesto para la convocatoria.
+
+## Introducción
+
+En el desafío se propone realizar una serie de modificaciones a cada csv. Para esto, utilicé la función map y unas funciones propias, con el objetivo de iterar cada formateo necesario de manera eficiente y reproducible. Asimismo, teniendo la lista en formato long y con sus respectivos cambios, creé un dataframe con las columnas a utilizar en el análisis descriptivo y visualización. Finalmente, se procede a la interpretación.
+
+Me gustaría señalar que me propuse utilizar quarto, así que si ven algún feedback, me sería de mucha utilidad,ya que es mi primera vez.
+
+## Comencemos!
+
+Primeramente es necesario cargar las librerías a utilizar:
+
+<details>
+<summary>Ver código</summary>
+
+
+
+```{r output=FALSE}
+#| results: hide
+library(tidyverse)
+library(purrr)
+library(readr)
+library(dplyr)
+
+```
+
+
+
+Luego, cargamos cada archivo .csv de nuestra carpeta data, indicando que cada archivo posee como patrón en común su tipo y conservamos sus nombres. Además, al momento de la lectura, omitimos mostrar la clase de las columnas para evitar el ruido que produce el bucle map.
+
+
+
+
+```{r output=FALSE}
+#| results: hide
+#| cache: true
+folder <- "data"
+csv_files <- list.files(folder, pattern = "\\.csv$", full.names = TRUE)
+data_list <- map(csv_files, read_csv, show_col_types = FALSE)
+```
+
+
+
+### Preparación de funciones iterativas
+
+Construimos las funciones que nos permiten interar con un código más ordenado.
+
+
+
+```{r}
+
+
+to_lower_colnames <- function(csv) {
+  colnames(csv) <- tolower(colnames(csv))
+  return(csv)
+}
+
+
+pivot_longer_transform <- function(csv) {
+ csv %>%
+    pivot_longer(
+      cols = y1961:y2019,   
+      names_to = "year",      
+      values_to = "temperature_change"     
+    ) %>% 
+    mutate(year = as.numeric(sub("y", "", year)))
+}
+```
+
+
+
+
+
+### Proceso iterativo
+
+Empezamos con dejar los nombres de cada columna en minúscula. Luego transformamos la lista en formato long con pivot_longer.
+
+
+
+```{r}
+data_list<- map(data_list, to_lower_colnames)
+
+data_list_long <- map(data_list, pivot_longer_transform)
+
+#Verificamos los cambios
+
+colnames(data_list_long[[200]])
+```
+
+
+
+## Construcción de Variable Date
+
+Para crear la variable date, es necesario realizar otro bucle map que transforme los valores string de cada mes (January, February, etc.) a un formato numérico (MM).
+
+
+
+```{r}
+data_list_long <- map(data_list_long, ~ {
+  .x %>%
+    mutate(
+      date = as.Date(paste(year, months, "22", sep = "-"))
+    )
+})
+
+#Verificamos formato date
+
+first_table <- data_list_long[[1]]
+
+class(first_table$date)
+
+
+
+```
+
+
+
+## Dataframe final
+
+Luego de realizar el respectivo formateo, se procede a unir cada archivo csv en uno que contenga toda la información adecuadamente para el análisis descriptivo y visualización en el tiempo.
+
+
+
+
+
+```{r}
+final_data <- data_list_long %>%
+  map_dfr(~ if (all(1961:2019 %in% .x$year)) {
+    .x %>%
+      select(area, months, year, temperature_change, date)
+  } else {
+    NULL
+  })
+```
+
+
+
+
+## Análisis Descriptivo
+
+Se realiza un análisis descriptivo, el cual incluye la media, mediana, desviación estándar, mínimo, máximo y rango intercuartil.
+
+
+
+```{r}
+tabla_descriptiva <- final_data %>%
+  summarise(
+    count = n(),
+    mean = mean(temperature_change, na.rm = TRUE),
+    median = median(temperature_change, na.rm = TRUE),
+    sd = sd(temperature_change, na.rm = TRUE),
+    min = min(temperature_change, na.rm = TRUE),
+    max = max(temperature_change, na.rm = TRUE),
+    iqr = IQR(temperature_change, na.rm = TRUE)
+  )
+
+tabla_descriptiva
+```
+
+
+
+## Preparación y Visualización
+
+Antes de visualizar el cambio de la temperatura en los países, creo necesario calcular la media por año, esto para mejorar la legibilidad del gráfico y su lectura.
+
+
+
+```{r}
+mean_temperature <- final_data %>%
+  group_by(date) %>%
+  summarise(mean_temperatura_change = mean(temperature_change, na.rm = TRUE))
+```
+
+
+
+Ahora sí, el gráfico:
+
+
+
+```{r}
+ggplot(mean_temperature, aes(x = date, y = mean_temperatura_change)) +
+  geom_line(color = "blue") +
+  labs(title = "Cambio de Temperatura media en el tiempo (1960-2019) a nivel global",
+       subtitle = "Se observa una clara tendencia al alza desde los inicios de la medición",
+       x = "Fecha",
+       y = "Media del Cambio de Temperatura",
+       caption = "Elaboración propia a partir de Fao 2019") +
+  theme_minimal()
+```
+
+
+
+# Interpretación
+
+He dividido las interpretaciones de los estadísticos descriptivos según las tipos de medidas:
+
+-   **Tendencia Central**: Los valores medios y medianos de `temperature_change` son relativamente similares (0.486 y 0.419 respectivamente), lo que puede indicar que la distribución de los cambios de temperatura es relativamente simétrica. No obstante, se destaca que la media es ligeramente mayor que la mediana, lo que puede indicar que los datos poseen una leve asimetría hacia los valores más altos.
+
+-   **Dispersión**: La desviación estándar nos dice que las observaciones tienden a estar a aproximadamente 1.08 unidades de la media. El rango intercuartílico (1.10) sugiere que hay una variabilidad más .
+
+-   **Valores extremos**: Los valores mínimo y máximo (desde -9.33 hasta 11.8) indican que en la muestra podemos observar una amplia diversidad de cambios de temperatura observados, algunos valores extremos significativos.
+
+En conclusión, podemos desprender del análisis que la temperatura ha ido variando sostenidamente en el tiempo. Sería interesante realizar algún cruce de variables y formulación de hipótesis, que permitan predecir las tendencias futuras e identificar si los cambios son estadísticamente significativos. También analizar si estos picos de temperaturas bajas que se observan en los años más recientes, son significativos o buscar variables explictivas.
+

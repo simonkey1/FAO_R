@@ -1,0 +1,8 @@
+"0","ggplot(mean_temperature, aes(x = date, y = mean_temperatura_change)) +"
+"0","  geom_line(color = ""blue"") +"
+"0","  labs(title = ""Cambio de Temperatura media en el tiempo (1960-2019) a nivel global"","
+"0","       subtitle = ""Existe un incremento general en la temperatura del planeta"","
+"0","       x = ""Fecha"","
+"0","       y = ""Media del Cambio de Temperatura"","
+"0","       caption = ""Elaboración propia a partir de FAO 2019"") +"
+"0","  theme_minimal()"
